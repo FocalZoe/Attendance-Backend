@@ -12,7 +12,7 @@ const sampleBase64Jpegs = [
 ];
 
 async function sendSingleTelemetry(customMessage?: string, base64Image?: string) {
-  const defaultMsg = `網路攝像機考勤打卡: 張小明 #${Math.floor(1000 + Math.random() * 9000)}`;
+  const defaultMsg = `打卡成功 #${Math.floor(1000 + Math.random() * 9000)}`;
   const messageToSend = customMessage || defaultMsg;
   const imageToSend = base64Image || sampleBase64Jpegs[Math.floor(Math.random() * sampleBase64Jpegs.length)];
 
@@ -76,7 +76,7 @@ function promptUser() {
       console.log('👋 已退出程式');
       process.exit(0);
     }
-    
+
     sendSingleTelemetry(answer.trim() || undefined);
     setTimeout(promptUser, 1000);
   });

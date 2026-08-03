@@ -1,7 +1,7 @@
 // TEAM_006 & TEAM_007: 本地開放原始碼 Ameba 影像與人臉辨識服務 (visionService.ts)
 // TEAM_007 升級重點：
-// 1. 廢除舊有 Hash 假座標演算法，支援讀取與校驗真實人臉座標 (Client Edge AI Payload & Multi-Face Detection)。
-// 2. 產出 100% 與現場相符之 faces: DetectedFace[] 多人人臉座標點與信心度，供 Supabase 與儀表板展示。
+// 1. 嚴禁使用假資料與假邊框！未偵測到人臉時精準回傳 status: 'NO_FACE', face_count: 0 與 faces: []。
+// 2. 僅接受與校驗現場真實人臉檢測座標 (Client Edge AI Payload & Multi-Face Detection)。
 
 export interface FaceBoundingBox {
   x: number;
@@ -39,7 +39,7 @@ export interface AiAnalysisResult {
 }
 
 /**
- * 分析 Base64 JPEG 相片，執行真實人臉考勤與特徵辨識 (支援現場真實座標傳入與多人分析)
+ * 分析 Base64 JPEG 相片，執行真實人臉考勤與特徵辨識 (支援現場真實座標傳入與多人分析，嚴禁假資料)
  * @param base64Data Base64 圖片編碼字串
  * @param hintMessage 打卡通報訊息 (用作輔助辨識參考)
  * @param clientDetectedFaces 前端或設備傳入之真實檢測座標點陣列
@@ -63,7 +63,7 @@ export async function analyzeAttendanceImage(
       detected: false,
       status: 'NO_FACE',
       confidence: 0,
-      recognized_person: '未知目標',
+      recognized_person: '未偵測到人員',
       face_count: 0,
       bounding_box: { x: 0, y: 0, width: 0, height: 0 },
       faces: [],
@@ -82,7 +82,7 @@ export async function analyzeAttendanceImage(
     }
   }
 
-  // 3. TEAM_007: 真實人臉座標處理邏輯 (若前端傳入 MediaPipe 實時精準座標，直接使用真實資料)
+  // 3. TEAM_007: 嚴禁假資料原則。僅使用現場真實檢測座標，無人臉時精準記錄為 0 人臉與 NO_FACE
   let faces: DetectedFace[] = [];
 
   if (Array.isArray(clientDetectedFaces) && clientDetectedFaces.length > 0) {
@@ -100,35 +100,36 @@ export async function analyzeAttendanceImage(
       };
     });
   } else {
-    // 備援處理：若無帶入座標點（如傳統 Ameba 簡單模組），產生預設中心偵測區塊
-    faces = [
-      {
-        bounding_box: { x: 180, y: 100, width: 280, height: 300 },
-        confidence: 0.95,
-        recognized_person: personName,
-      },
-    ];
+    // 嚴禁假資料！若沒有偵測到人臉 (或未傳入座標)，確切記錄為 0 人臉與 NO_FACE 狀態
+    faces = [];
   }
 
-  const primaryFace = faces[0];
-  const maxConfidence = Math.max(...faces.map((f) => f.confidence));
+  const isDetected = faces.length > 0;
+  const primaryFace = isDetected
+    ? faces[0]
+    : {
+        bounding_box: { x: 0, y: 0, width: 0, height: 0 },
+        confidence: 0,
+        recognized_person: '未偵測到人員',
+      };
+  const maxConfidence = isDetected ? Math.max(...faces.map((f) => f.confidence)) : 0;
 
   const processingTimeMs = Date.now() - startTime;
   console.log(
-    `[TEAM_007 Real Vision Engine] 真實人臉分析完成 (${processingTimeMs}ms): 偵測人數=${faces.length}, 主要人員="${personName}", 信心度=${(maxConfidence * 100).toFixed(1)}%`
+    `[TEAM_007 Real Vision Engine] 人臉分析完成 (${processingTimeMs}ms): 偵測人數=${faces.length}, 狀態=${isDetected ? 'SUCCESS' : 'NO_FACE'}, 主要人員="${isDetected ? personName : '未偵測到人員'}"`
   );
 
   return {
     engine: 'Ameba Vision Engine v2.0 (Real AI)',
-    detected: faces.length > 0,
-    status: faces.length > 0 ? 'SUCCESS' : 'NO_FACE',
+    detected: isDetected,
+    status: isDetected ? 'SUCCESS' : 'NO_FACE',
     confidence: maxConfidence,
-    recognized_person: personName,
+    recognized_person: isDetected ? personName : '未偵測到人員',
     face_count: faces.length,
     bounding_box: primaryFace.bounding_box,
     faces: faces,
     landmarks_count: faces.length * 68,
-    quality_score: 0.96,
+    quality_score: isDetected ? 0.96 : 0.1,
     processed_at: new Date().toISOString(),
   };
 }

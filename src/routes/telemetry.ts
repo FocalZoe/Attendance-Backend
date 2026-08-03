@@ -24,8 +24,8 @@ export const telemetryRouter = Router();
  */
 telemetryRouter.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    // 1. 從請求包裹 (req.body) 中解開 message(打卡訊息), file(Base64 圖片), timestamp(時間點)
-    const { message, file, timestamp } = req.body;
+    // 1. 從請求包裹 (req.body) 中解開 message, file, timestamp 與 TEAM_007 新增之 detected_faces 真實座標點
+    const { message, file, timestamp, detected_faces } = req.body;
 
     // 【安全檢查】：如果沒有傳打卡訊息或沒有傳圖片，退回包裹並報錯 400 (Bad Request)
     if (!message || !file) {
@@ -33,14 +33,14 @@ telemetryRouter.post('/', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    console.log(`[TEAM_006 API] 收到 Ameba 相機打卡 JSON: Message="${message}", Base64 長度=${file.length} 字元`);
+    console.log(`[TEAM_007 API] 收到 Ameba 相機打卡 JSON: Message="${message}", Base64 長度=${file.length} 字元, 真實人臉數=${Array.isArray(detected_faces) ? detected_faces.length : 0}`);
 
     // 2. 【上傳雲端相簿】：呼叫 uploadBase64Image 函式把 Base64 圖片碼解碼並上傳至 Supabase Storage，取得 fileUrl 公開圖片網址
     const fileUrl = await uploadBase64Image(file);
-    console.log(`[TEAM_006 API] 圖片已成功上傳至 Supabase Storage: ${fileUrl}`);
+    console.log(`[TEAM_007 API] 圖片已成功上傳至 Supabase Storage: ${fileUrl}`);
 
-    // 3. 【TEAM_006 AI 影像辨識】：呼叫 visionService 分析 Base64 照片人臉與特徵
-    const aiAnalysis = await analyzeAttendanceImage(file, message);
+    // 3. 【TEAM_007 AI 影像辨識】：呼叫 visionService 進行真實座標解析與分析
+    const aiAnalysis = await analyzeAttendanceImage(file, message, detected_faces);
 
     // 4. 準備要存進資料庫的欄位表單 (時間、打卡訊息、圖片網址、AI 辨識結果)
     const createAt = timestamp ? new Date(timestamp).toISOString() : new Date().toISOString();
